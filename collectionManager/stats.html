@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Book Collection Stats</title>
+  <!-- Link to main CSS -->
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <header>
+    <h1>Book Collection Stats</h1>
+    <nav>
+      <!-- Back button to main page -->
+      <a href="index.html"><button>Back</button></a>
+    </nav>
+  </header>
+
+  <main>
+    <!-- Container for stats cards -->
+    <div id="stats"></div>
+  </main>
+
+  <!-- Include main app JS -->
+  <script src="app.js"></script>
+  <script>
+    // Render stats when page loads
+    window.onload = () => {
+      const stats = getStats(); // Get stats from app.js
+      const container = document.getElementById("stats");
+
+      // Display total books and average year
+      container.innerHTML = `
+        <div class="statCard">
+          <h2>Total Books</h2>
+          <p>${stats.total}</p>
+        </div>
+
+        <div class="statCard">
+          <h2>Average Publication Year</h2>
+          <p>${stats.avgYear}</p>
+        </div>
+      `;
+    };
+  </script>
+
+</body>
+</html>
