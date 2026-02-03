@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Book Collection Stats</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header>
+  <h1>Collection Statistics</h1>
+  <nav>
+    <a href="index.html"><button>Back</button></a>
+  </nav>
+</header>
+
+<main>
+  <div id="stats"></div>
+</main>
+
+<script>
+fetch("/.netlify/functions/books")
+  .then(res => res.json())
+  .then(books => {
+    const avgYear = Math.round(
+      books.reduce((sum, b) => sum + b.year, 0) / books.length
+    );
+
+    document.getElementById("stats").innerHTML = `
+      <div class="statCard">
+        <h2>Total Books</h2>
+        <p>${books.length}</p>
+      </div>
+      <div class="statCard">
+        <h2>Average Publication Year</h2>
+        <p>${avgYear}</p>
+      </div>
+    `;
+  });
+</script>
+
+</body>
+</html>
