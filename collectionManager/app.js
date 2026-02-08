@@ -1,4 +1,6 @@
-const API = "/.netlify/functions/books";
+const API_BASE = "https://cpsc3750-solo-project-2.onrender.com/api";
+const BOOKS_API = `${API_BASE}/books`;
+
 let currentPage = 1;
 let totalRecords = 0;
 let pageSize = 10;
@@ -21,10 +23,10 @@ const authorErr = document.getElementById("authorErr");
 const yearErr = document.getElementById("yearErr");
 const serverErr = document.getElementById("serverErr");
 
-document.getElementById("openAddBtn").addEventListener("click", () => openFormForAdd());
-document.getElementById("cancelBtn").addEventListener("click", () => closeForm());
-prevBtn.addEventListener("click", () => prevPage());
-nextBtn.addEventListener("click", () => nextPage());
+document.getElementById("openAddBtn").addEventListener("click", openFormForAdd);
+document.getElementById("cancelBtn").addEventListener("click", closeForm);
+prevBtn.addEventListener("click", () => loadPage(currentPage - 1));
+nextBtn.addEventListener("click", () => loadPage(currentPage + 1));
 
 function clearErrors() {
   titleErr.textContent = "";
@@ -74,21 +76,35 @@ function closeForm() {
 }
 
 async function loadPage(page) {
-  const res = await fetch(`${API}?page=${page}`);
-  const data = await res.json();
+  if (page < 1) page = 1;
 
-  currentPage = data.page;
-  totalRecords = data.total;
-  pageSize = data.pageSize;
+  try {
+    const res = await fetch(`${BOOKS_API}?page=${page}`);
+    if (!res.ok) throw new Error(`Books API error: ${res.status}`);
 
-  renderList(data.items);
-  updatePagingUI();
+    const data = await res.json();
+
+    currentPage = data.page;
+    totalRecords = data.total;
+    pageSize = data.pageSize;
+
+    renderList(data.items);
+    updatePagingUI();
+  } catch (e) {
+    listView.innerHTML = `
+      <div>
+        <h2>Could not load books</h2>
+        <p>Make sure the backend is running:</p>
+        <p><code>${BOOKS_API}?page=1</code></p>
+      </div>
+    `;
+    console.error(e);
+  }
 }
 
 function updatePagingUI() {
   const totalPages = Math.max(1, Math.ceil(totalRecords / pageSize));
   pageIndicator.textContent = `Page ${currentPage} of ${totalPages}`;
-
   prevBtn.disabled = currentPage <= 1;
   nextBtn.disabled = currentPage >= totalPages;
 }
@@ -126,31 +142,24 @@ function renderList(items) {
 
   listView.appendChild(table);
 
-  // Button handlers
+  // Edit buttons
   listView.querySelectorAll("[data-edit]").forEach(btn => {
     btn.addEventListener("click", async () => {
       const id = Number(btn.getAttribute("data-edit"));
-      // To edit, we need the item data. Easiest: reload current page and find it.
-      const res = await fetch(`${API}?page=${currentPage}`);
+      const res = await fetch(`${BOOKS_API}?page=${currentPage}`);
       const data = await res.json();
       const book = data.items.find(b => b.id === id);
       if (book) openFormForEdit(book);
     });
   });
 
+  // Delete buttons
   listView.querySelectorAll("[data-del]").forEach(btn => {
     btn.addEventListener("click", async () => {
       const id = Number(btn.getAttribute("data-del"));
       await deleteBook(id);
     });
   });
-}
-
-function nextPage() {
-  loadPage(currentPage + 1);
-}
-function prevPage() {
-  loadPage(currentPage - 1);
 }
 
 bookForm.addEventListener("submit", async (e) => {
@@ -168,12 +177,16 @@ bookForm.addEventListener("submit", async (e) => {
     clearErrors();
 
     const id = bookId.value ? Number(bookId.value) : null;
+    const url = id ? `${BOOKS_API}/${id}` : BOOKS_API;
     const method = id ? "PUT" : "POST";
-    const body = id ? JSON.stringify({ id, ...payload }) : JSON.stringify(payload);
 
-    const res = await fetch(API, { method, body });
-    const resultText = await res.text();
-    const result = resultText ? JSON.parse(resultText) : {};
+    const res = await fetch(url, {
+      method,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+
+    const result = await res.json().catch(() => ({}));
 
     if (!res.ok) {
       serverErr.textContent = result.error || "Server error.";
@@ -181,35 +194,31 @@ bookForm.addEventListener("submit", async (e) => {
     }
 
     closeForm();
-
-    // After add/delete, make sure paging stays valid
-    const totalPages = Math.max(1, Math.ceil(totalRecords / pageSize));
-    if (currentPage > totalPages) currentPage = totalPages;
-
     await loadPage(currentPage);
   } catch (err) {
     serverErr.textContent = "Request failed. Try again.";
+    console.error(err);
   }
 });
 
 async function deleteBook(id) {
   if (!confirm("Are you sure you want to delete this book?")) return;
 
-  const res = await fetch(`${API}?id=${id}`, { method: "DELETE" });
-  const resultText = await res.text();
-  const result = resultText ? JSON.parse(resultText) : {};
+  try {
+    const res = await fetch(`${BOOKS_API}/${id}`, { method: "DELETE" });
+    const result = await res.json().catch(() => ({}));
 
-  if (!res.ok) {
-    alert(result.error || "Delete failed.");
-    return;
+    if (!res.ok) {
+      alert(result.error || "Delete failed.");
+      return;
+    }
+
+    // reload page (and handle edge case if last item removed)
+    await loadPage(currentPage);
+  } catch (err) {
+    alert("Delete request failed.");
+    console.error(err);
   }
-
-  // If we deleted the last item on the last page, move back a page
-  const afterTotal = Math.max(0, totalRecords - 1);
-  const totalPagesAfter = Math.max(1, Math.ceil(afterTotal / pageSize));
-  if (currentPage > totalPagesAfter) currentPage = totalPagesAfter;
-
-  await loadPage(currentPage);
 }
 
 window.onload = () => loadPage(1);

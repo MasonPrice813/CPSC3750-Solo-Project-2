@@ -1,237 +1,112 @@
-const API_BASE = "https://cpsc3750-solo-project-2.onrender.com/api";
-const BOOKS_API = `${API_BASE}/books`;
+from flask import Flask, request, jsonify
+import json, os
 
-let currentPage = 1;
-let totalRecords = 0;
-let pageSize = 10;
+app = Flask(__name__)
 
-const listView = document.getElementById("listView");
-const pageIndicator = document.getElementById("pageIndicator");
-const prevBtn = document.getElementById("prevBtn");
-const nextBtn = document.getElementById("nextBtn");
+DATA_FILE = os.path.join(os.path.dirname(__file__), "books.json")
+PAGE_SIZE = 10
 
-const formSection = document.getElementById("formSection");
-const formTitle = document.getElementById("formTitle");
-const bookForm = document.getElementById("bookForm");
-const bookId = document.getElementById("bookId");
-const titleInput = document.getElementById("title");
-const authorInput = document.getElementById("author");
-const yearInput = document.getElementById("year");
+def load_books():
+    with open(DATA_FILE, "r", encoding="utf-8") as f:
+        return json.load(f)
 
-const titleErr = document.getElementById("titleErr");
-const authorErr = document.getElementById("authorErr");
-const yearErr = document.getElementById("yearErr");
-const serverErr = document.getElementById("serverErr");
+def save_books(books):
+    with open(DATA_FILE, "w", encoding="utf-8") as f:
+        json.dump(books, f, indent=2)
 
-document.getElementById("openAddBtn").addEventListener("click", () => openFormForAdd());
-document.getElementById("cancelBtn").addEventListener("click", () => closeForm());
-prevBtn.addEventListener("click", () => prevPage());
-nextBtn.addEventListener("click", () => nextPage());
+def validate_book(data):
+    title = str(data.get("title", "")).strip()
+    author = str(data.get("author", "")).strip()
+    year = data.get("year", None)
 
-function clearErrors() {
-  titleErr.textContent = "";
-  authorErr.textContent = "";
-  yearErr.textContent = "";
-  serverErr.textContent = "";
-}
+    if not title: return "Title is required."
+    if not author: return "Author is required."
+    if year is None: return "Year is required."
 
-function clientValidate({ title, author, year }) {
-  clearErrors();
-  let ok = true;
+    try:
+        year = int(year)
+    except:
+        return "Year must be a number."
+    if year < 0 or year > 2100:
+        return "Year must be between 0 and 2100."
 
-  if (!title.trim()) {
-    titleErr.textContent = "Title is required.";
-    ok = false;
-  }
+    data["title"] = title
+    data["author"] = author
+    data["year"] = year
+    return None
 
-  if (!author.trim()) {
-    authorErr.textContent = "Author is required.";
-    ok = false;
-  }
+# Simple CORS so Netlify can call Render
+@app.after_request
+def add_cors(resp):
+    resp.headers["Access-Control-Allow-Origin"] = "*"
+    resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
+    resp.headers["Access-Control-Allow-Methods"] = "GET,POST,PUT,DELETE,OPTIONS"
+    return resp
 
-  const y = Number(year);
-  if (!Number.isInteger(y)) {
-    yearErr.textContent = "Year must be a number.";
-    ok = false;
-  } else if (y < 0 || y > 2100) {
-    yearErr.textContent = "Year must be 0–2100.";
-    ok = false;
-  }
+@app.route("/api/books", methods=["GET"])
+def get_books():
+    books = load_books()
+    page = int(request.args.get("page", 1))
+    if page < 1: page = 1
 
-  return ok;
-}
+    total = len(books)
+    start = (page - 1) * PAGE_SIZE
+    end = start + PAGE_SIZE
 
-function openFormForAdd() {
-  clearErrors();
-  formTitle.textContent = "Add Book";
-  bookId.value = "";
-  titleInput.value = "";
-  authorInput.value = "";
-  yearInput.value = "";
-  formSection.classList.remove("hidden");
-  titleInput.focus();
-}
+    return jsonify({
+        "items": books[start:end],
+        "total": total,
+        "page": page,
+        "pageSize": PAGE_SIZE
+    })
 
-function openFormForEdit(book) {
-  clearErrors();
-  formTitle.textContent = "Edit Book";
-  bookId.value = book.id;
-  titleInput.value = book.title;
-  authorInput.value = book.author;
-  yearInput.value = book.year;
-  formSection.classList.remove("hidden");
-  titleInput.focus();
-}
+@app.route("/api/books", methods=["POST"])
+def create_book():
+    books = load_books()
+    data = request.get_json(silent=True) or {}
+    err = validate_book(data)
+    if err:
+        return jsonify({"error": err}), 400
 
-function closeForm() {
-  formSection.classList.add("hidden");
-}
+    next_id = (max([b["id"] for b in books]) + 1) if books else 1
+    new_book = {"id": next_id, "title": data["title"], "author": data["author"], "year": data["year"]}
+    books.append(new_book)
+    save_books(books)
+    return jsonify(new_book), 201
 
-async function loadPage(page) {
-  const res = await fetch(`${BOOKS_API}?page=${page}`);
-  const data = await res.json();
+@app.route("/api/books/<int:book_id>", methods=["PUT"])
+def update_book(book_id):
+    books = load_books()
+    data = request.get_json(silent=True) or {}
+    data["id"] = book_id
 
-  currentPage = data.page;
-  totalRecords = data.total;
-  pageSize = data.pageSize;
+    err = validate_book(data)
+    if err:
+        return jsonify({"error": err}), 400
 
-  renderList(data.items);
-  updatePagingUI();
-}
+    for b in books:
+        if b["id"] == book_id:
+            b["title"] = data["title"]
+            b["author"] = data["author"]
+            b["year"] = data["year"]
+            save_books(books)
+            return jsonify(b)
 
-function updatePagingUI() {
-  const totalPages = Math.max(1, Math.ceil(totalRecords / pageSize));
-  pageIndicator.textContent = `Page ${currentPage} of ${totalPages}`;
+    return jsonify({"error": "Book not found."}), 404
 
-  prevBtn.disabled = currentPage <= 1;
-  nextBtn.disabled = currentPage >= totalPages;
-}
+@app.route("/api/books/<int:book_id>", methods=["DELETE"])
+def delete_book(book_id):
+    books = load_books()
+    new_books = [b for b in books if b["id"] != book_id]
+    if len(new_books) == len(books):
+        return jsonify({"error": "Book not found."}), 404
 
-function renderList(items) {
-  listView.innerHTML = "";
+    save_books(new_books)
+    return jsonify({"ok": True})
 
-  const table = document.createElement("table");
-  table.innerHTML = `
-    <tr>
-      <th>#</th>
-      <th>Title</th>
-      <th>Author</th>
-      <th>Year</th>
-      <th>Actions</th>
-    </tr>
-  `;
-
-  const startIndex = (currentPage - 1) * pageSize;
-
-  items.forEach((book, i) => {
-    const tr = document.createElement("tr");
-    tr.innerHTML = `
-      <td>${startIndex + i + 1}</td>
-      <td>${book.title}</td>
-      <td>${book.author}</td>
-      <td>${book.year}</td>
-      <td>
-        <button type="button" class="secondary" data-edit="${book.id}">Edit</button>
-        <button type="button" class="danger" data-del="${book.id}">Delete</button>
-      </td>
-    `;
-    table.appendChild(tr);
-  });
-
-  listView.appendChild(table);
-
-  // Edit buttons
-  listView.querySelectorAll("[data-edit]").forEach(btn => {
-    btn.addEventListener("click", async () => {
-      const id = Number(btn.getAttribute("data-edit"));
-
-      // easiest: re-fetch current page and grab the item
-      const res = await fetch(`${BOOKS_API}?page=${currentPage}`);
-      const data = await res.json();
-      const book = data.items.find(b => b.id === id);
-
-      if (book) openFormForEdit(book);
-    });
-  });
-
-  // Delete buttons
-  listView.querySelectorAll("[data-del]").forEach(btn => {
-    btn.addEventListener("click", async () => {
-      const id = Number(btn.getAttribute("data-del"));
-      await deleteBook(id);
-    });
-  });
-}
-
-function nextPage() {
-  loadPage(currentPage + 1);
-}
-function prevPage() {
-  loadPage(currentPage - 1);
-}
-
-bookForm.addEventListener("submit", async (e) => {
-  e.preventDefault();
-
-  const payload = {
-    title: titleInput.value,
-    author: authorInput.value,
-    year: yearInput.value
-  };
-
-  if (!clientValidate(payload)) return;
-
-  try {
-    clearErrors();
-
-    const id = bookId.value ? Number(bookId.value) : null;
-
-    const url = id ? `${BOOKS_API}/${id}` : BOOKS_API;
-    const method = id ? "PUT" : "POST";
-
-    const res = await fetch(url, {
-      method,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
-    });
-
-    const resultText = await res.text();
-    const result = resultText ? JSON.parse(resultText) : {};
-
-    if (!res.ok) {
-      serverErr.textContent = result.error || "Server error.";
-      return;
-    }
-
-    closeForm();
-
-    const totalPages = Math.max(1, Math.ceil(totalRecords / pageSize));
-    if (currentPage > totalPages) currentPage = totalPages;
-
-    await loadPage(currentPage);
-  } catch (err) {
-    serverErr.textContent = "Request failed. Try again.";
-  }
-});
-
-async function deleteBook(id) {
-  if (!confirm("Are you sure you want to delete this book?")) return;
-
-  const res = await fetch(`${BOOKS_API}/${id}`, { method: "DELETE" });
-  const resultText = await res.text();
-  const result = resultText ? JSON.parse(resultText) : {};
-
-  if (!res.ok) {
-    alert(result.error || "Delete failed.");
-    return;
-  }
-
-  // If we deleted the last item on the last page, move back a page
-  const afterTotal = Math.max(0, totalRecords - 1);
-  const totalPagesAfter = Math.max(1, Math.ceil(afterTotal / pageSize));
-  if (currentPage > totalPagesAfter) currentPage = totalPagesAfter;
-
-  await loadPage(currentPage);
-}
-
-window.onload = () => loadPage(1);
+@app.route("/api/stats", methods=["GET"])
+def stats():
+    books = load_books()
+    total = len(books)
+    avg_year = round(sum(b.get("year", 0) for b in books) / total) if total else 0
+    return jsonify({"total": total, "averagePublicationYear": avg_year})
