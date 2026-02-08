@@ -23,10 +23,62 @@ const authorErr = document.getElementById("authorErr");
 const yearErr = document.getElementById("yearErr");
 const serverErr = document.getElementById("serverErr");
 
+// Optional status element (recommended)
+const statusEl = document.getElementById("status");
+
 document.getElementById("openAddBtn").addEventListener("click", openFormForAdd);
 document.getElementById("cancelBtn").addEventListener("click", closeForm);
 prevBtn.addEventListener("click", () => loadPage(currentPage - 1));
 nextBtn.addEventListener("click", () => loadPage(currentPage + 1));
+
+function setStatus(message) {
+  if (!statusEl) return;
+  statusEl.textContent = message;
+  statusEl.classList.remove("hidden");
+}
+
+function clearStatus() {
+  if (!statusEl) return;
+  statusEl.textContent = "";
+  statusEl.classList.add("hidden");
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// Retries help with Render cold starts / temporary 502/503 while waking
+async function fetchWithBackendWait(url, options = {}, attempts = 6) {
+  let lastError = null;
+
+  for (let i = 1; i <= attempts; i++) {
+    try {
+      setStatus("Waiting on backend server to start…");
+
+      // Per-attempt timeout so we don't hang forever
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 12000);
+
+      const res = await fetch(url, { ...options, signal: controller.signal });
+      clearTimeout(timeout);
+
+      // Treat non-OK as retryable during startup
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+      clearStatus();
+      return res;
+    } catch (err) {
+      lastError = err;
+
+      // Backoff timing (keeps it simple)
+      // ~5s per attempt is fine for a ~30-60s cold start
+      await sleep(5000);
+    }
+  }
+
+  clearStatus();
+  throw lastError;
+}
 
 function clearErrors() {
   titleErr.textContent = "";
@@ -79,12 +131,13 @@ async function loadPage(page) {
   if (page < 1) page = 1;
 
   try {
-    const res = await fetch(`${BOOKS_API}?page=${page}`);
-    if (!res.ok) throw new Error(`Books API error: ${res.status}`);
-
+    const res = await fetchWithBackendWait(`${BOOKS_API}?page=${page}`);
     const data = await res.json();
 
-    currentPage = data.page;
+    // Clamp client-side too (helps after delete shrink)
+    const totalPages = Math.max(1, Math.ceil(data.total / data.pageSize));
+    currentPage = Math.min(Math.max(1, data.page), totalPages);
+
     totalRecords = data.total;
     pageSize = data.pageSize;
 
@@ -94,7 +147,7 @@ async function loadPage(page) {
     listView.innerHTML = `
       <div>
         <h2>Could not load books</h2>
-        <p>Make sure the backend is running:</p>
+        <p>The backend may be starting up. If it still doesn’t load, try refreshing.</p>
         <p><code>${BOOKS_API}?page=1</code></p>
       </div>
     `;
@@ -146,10 +199,15 @@ function renderList(items) {
   listView.querySelectorAll("[data-edit]").forEach(btn => {
     btn.addEventListener("click", async () => {
       const id = Number(btn.getAttribute("data-edit"));
-      const res = await fetch(`${BOOKS_API}?page=${currentPage}`);
-      const data = await res.json();
-      const book = data.items.find(b => b.id === id);
-      if (book) openFormForEdit(book);
+      try {
+        const res = await fetchWithBackendWait(`${BOOKS_API}?page=${currentPage}`);
+        const data = await res.json();
+        const book = data.items.find(b => b.id === id);
+        if (book) openFormForEdit(book);
+      } catch (err) {
+        console.error(err);
+        alert("Backend is still starting. Please try again in a moment.");
+      }
     });
   });
 
@@ -180,7 +238,7 @@ bookForm.addEventListener("submit", async (e) => {
     const url = id ? `${BOOKS_API}/${id}` : BOOKS_API;
     const method = id ? "PUT" : "POST";
 
-    const res = await fetch(url, {
+    const res = await fetchWithBackendWait(url, {
       method,
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
@@ -205,7 +263,7 @@ async function deleteBook(id) {
   if (!confirm("Are you sure you want to delete this book?")) return;
 
   try {
-    const res = await fetch(`${BOOKS_API}/${id}`, { method: "DELETE" });
+    const res = await fetchWithBackendWait(`${BOOKS_API}/${id}`, { method: "DELETE" });
     const result = await res.json().catch(() => ({}));
 
     if (!res.ok) {
@@ -213,10 +271,14 @@ async function deleteBook(id) {
       return;
     }
 
-    // reload page (and handle edge case if last item removed)
+    // If we deleted the last item on the last page, step back a page if needed
+    const afterDeleteTotal = Math.max(0, totalRecords - 1);
+    const totalPagesAfter = Math.max(1, Math.ceil(afterDeleteTotal / pageSize));
+    if (currentPage > totalPagesAfter) currentPage = totalPagesAfter;
+
     await loadPage(currentPage);
   } catch (err) {
-    alert("Delete request failed.");
+    alert("Delete request failed (backend may still be starting).");
     console.error(err);
   }
 }
