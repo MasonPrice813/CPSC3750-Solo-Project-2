@@ -1,28 +1,64 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8" />
   <title>Book Collection Manager</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="stylesheet" href="style.css">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="stylesheet" href="style.css" />
 </head>
 <body>
 
 <header>
   <h1>Book Collection Manager</h1>
   <nav>
-    <button onclick="addBook()">Add Book</button>
-    <a href="stats.html"><button>View Stats</button></a>
+    <button id="openAddBtn" type="button">Add Book</button>
+    <a href="stats.html"><button type="button">View Stats</button></a>
   </nav>
 </header>
 
 <main>
-  <div id="listView"></div>
+  <!-- Add/Edit Form -->
+  <section id="formSection" class="card hidden">
+    <h2 id="formTitle">Add Book</h2>
 
+    <form id="bookForm">
+      <input type="hidden" id="bookId" />
+
+      <label>
+        Title
+        <input id="title" type="text" />
+        <small class="error" id="titleErr"></small>
+      </label>
+
+      <label>
+        Author
+        <input id="author" type="text" />
+        <small class="error" id="authorErr"></small>
+      </label>
+
+      <label>
+        Year
+        <input id="year" type="number" />
+        <small class="error" id="yearErr"></small>
+      </label>
+
+      <small class="error" id="serverErr"></small>
+
+      <div class="formActions">
+        <button type="submit" id="saveBtn">Save</button>
+        <button type="button" id="cancelBtn" class="secondary">Cancel</button>
+      </div>
+    </form>
+  </section>
+
+  <!-- List -->
+  <div id="listView" class="card"></div>
+
+  <!-- Paging -->
   <div class="paging">
-    <button onclick="prevPage()">Previous</button>
+    <button id="prevBtn" type="button">Previous</button>
     <span id="pageIndicator"></span>
-    <button onclick="nextPage()">Next</button>
+    <button id="nextBtn" type="button">Next</button>
   </div>
 </main>
 

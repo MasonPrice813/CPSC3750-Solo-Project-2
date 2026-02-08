@@ -1,6 +1,3 @@
 [build]
-publish = "collectionManager"
-functions = "netlify/functions"
-
-[functions.runtime]
-name = "python"
+  publish = "collectionManager"
+  functions = "netlify/functions"
