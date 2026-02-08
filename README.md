@@ -1,7 +1,7 @@
 Cloud Collection Manager — Solo Project 2
 
 Netlify URL:
-👉 PASTE YOUR NETLIFY LINK HERE
+https://cpsc3750-project2.netlify.app
 
 Backend Language:
 Python (Flask)
