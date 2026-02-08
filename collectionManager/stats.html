@@ -20,7 +20,7 @@
 </main>
 
 <script>
-fetch("/.netlify/functions/stats")
+fetch("https://cpsc3750-solo-project-2.onrender.com/api/stats")
   .then(res => res.json())
   .then(data => {
     document.getElementById("stats").innerHTML = `
