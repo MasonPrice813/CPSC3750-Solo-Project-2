@@ -8,3 +8,5 @@ Python (Flask)
 
 JSON Persistence Explanation:
 All collection data is stored in a server-side JSON file on the backend. The frontend communicates with the backend using HTTP requests for all create, read, update, and delete operations. Because the data is managed and written by the backend, records persist across browser refreshes and different devices, and the browser does not store or own the data.
+
+LOOM LINK: https://www.loom.com/share/2389c06a20834b9bb10b74bffbe82daa
